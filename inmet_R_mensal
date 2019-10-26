@@ -1,0 +1,71 @@
+
+### <code r>
+# ---------------------------------------------------------------------------- #
+# INMET/BDMEP - Download Dados DIÁRIOS
+# Eder Comunello - 2013.11.08
+# ---------------------------------------------------------------------------- #
+library(RCurl); library(XML)
+setwd('~/LAB/DATCLIMA'); getwd()
+if (!file.exists('Download')) dir.create('Download'); dir(incl=T)
+
+# Login ---------------------------------------------------------------------- #
+myData  <- scan(text=readLines('BDMEP1.dat')[1], what=character(), sep=';')
+myParams=list(mCod   = myData[1], mSenha = myData[2], btnProcesso = " Acessar ")
+myCurl  <- getCurlHandle()
+myURL1  <- "http://www.inmet.gov.br/projetos/rede/pesquisa/inicio.php"
+curlSetOpt(cookiejar="cookies.txt", useragent="Mozilla/5.0", followlocation=TRUE, curl=myCurl)
+myLogin <- postForm(myURL1, .params=myParams, curl=myCurl)
+
+# Downloads ------------------------------------------------------------------ #
+dError <- dSucess <- as.character(NULL)
+
+dINMET <- function(code=83264, dINI='01/01/1980', dFIM='31/12/1985') {
+  myURL <- paste0("http://www.inmet.gov.br/projetos/rede/pesquisa/",
+                  "gera_serie_txt_mensal.php?&mRelEstacao=", code,
+                  "&btnProcesso=serie&mRelDtInicio=", dINI,
+                  "&mRelDtFim=",dFIM, "&mAtributos=1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1")
+ 
+  page    <- getURLContent(myURL, curl=myCurl, .encoding="UTF-8")
+  hParse  <- htmlParse(page)
+  ver1    <- as.character(substr(page,1,20))
+  ver2    <- substr(xpathSApply(hParse,'//*/pre', xmlValue, encoding='UTF-8'),1,17)
+ 
+  if (ver1=="Registro Inexistente" | ver2=="Não existem dados") {
+    print(paste0(code,': Dados não encontrados!'))
+    dError <<- c(dError, code)}
+  else {
+    print(paste0(code, ': OK!')); dSucess <<- c(dSucess, code)
+    hPart    <- xpathSApply(hParse,'//*/pre', xmlValue)
+    fileNam1 <- paste0('Download/raw_',code,'.txt')
+    cat(hPart, file=fileNam1)
+    dLines   <- unlist(strsplit(hPart, "\n"))
+    dHead    <- dLines[grep("^Estacao;", dLines)]
+    dText    <- append(dHead, dLines[grep("^[0-9]{5,};", dLines)])
+    dFrame   <- read.table(text=dText, dec=".", sep=";", head=T)
+    fileNam2 <- paste0('Download/dat_',code,'.txt')
+    write.table(dFrame, fileNam2, row.names=F)}
+}
+
+codEst  <- c(83264, 83267, 83270, 83319, 83332, 83358)
+dError <- dSucess <- as.character(NULL)
+
+tryCatch({
+  sapply(codEst, function(x) dINMET(x, dINI='01/01/1980', dFIM='31/12/1985'))
+         }, error=function(...)"ERROR!")
+# [1] "83264: OK!"
+# [1] "83267: Dados não encontrados!"
+# [1] "83270: Dados não encontrados!"
+# [1] "83319: Dados não encontrados!"
+# [1] "83332: OK!"
+# [1] "83358: OK!"
+
+paste(length(dSucess), 'estações baixadas com sucesso!')
+# [1] "3 estações baixadas com sucesso!"
+
+paste(length(dError), 'estações não baixadas!')
+# [1] "3 estações não baixadas!"
+
+dir(path="Download")
+# [1] "dat_83264.txt" "dat_83332.txt" "dat_83358.txt" "raw_83264.txt" "raw_83332.txt" "raw_83358.txt"
+
+### </code>
